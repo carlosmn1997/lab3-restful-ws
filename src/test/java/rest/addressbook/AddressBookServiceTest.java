@@ -20,6 +20,7 @@ import rest.addressbook.domain.AddressBook;
 import rest.addressbook.domain.Person;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 /**
  * A simple test suite
@@ -46,7 +47,15 @@ public class AddressBookServiceTest {
 		//////////////////////////////////////////////////////////////////////
 		// Verify that GET /contacts is well implemented by the service, i.e
 		// test that it is safe and idempotent
-		//////////////////////////////////////////////////////////////////////	
+		//////////////////////////////////////////////////////////////////////
+
+		// Safe and idempotent: Same petition, same response, do not change the state
+        response = client.target("http://localhost:8282/contacts")
+                .request().get();
+        assertEquals(200, response.getStatus());
+        assertEquals(0, response.readEntity(AddressBook.class).getPersonList()
+                .size());
+
 	}
 
 	@Test
@@ -88,7 +97,19 @@ public class AddressBookServiceTest {
 		// Verify that POST /contacts is well implemented by the service, i.e
 		// test that it is not safe and not idempotent
 		//////////////////////////////////////////////////////////////////////	
-				
+
+        // Adding the same user should get a different response
+        response = client.target("http://localhost:8282/contacts")
+                .request(MediaType.APPLICATION_JSON)
+                .post(Entity.entity(juan, MediaType.APPLICATION_JSON));
+
+        assertEquals(201, response.getStatus());
+        assertNotEquals(juanURI, response.getLocation()); // Same petition, different URI
+        assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+        assertEquals(juan.getName(), juanUpdated.getName());
+        assertEquals(1, juanUpdated.getId());
+        assertEquals(juanURI, juanUpdated.getHref());
+
 	}
 
 	@Test
