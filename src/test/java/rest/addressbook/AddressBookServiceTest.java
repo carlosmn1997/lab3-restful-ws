@@ -23,8 +23,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
 /**
- * A simple test suite
- *
+ * A simple test suite.
+ * <ul>
+ *   <li>Safe and idempotent: verify that two identical consecutive requests do not modify
+ *   the state of the server.</li>
+ *   <li>Not safe and idempotent: verify that only the first of two identical consecutive
+ *   requests modifies the state of the server.</li>
+ *   <li>Not safe nor idempotent: verify that two identical consecutive requests modify twice
+ *   the state of the server.</li>
+ * </ul>
  */
 public class AddressBookServiceTest {
 
@@ -33,7 +40,7 @@ public class AddressBookServiceTest {
 	@Test
 	public void serviceIsAlive() throws IOException {
 		// Prepare server
-		AddressBook ab = new AddressBook();
+		AddressBook ab = new AddressBook(); // Server state
 		launchServer(ab);
 
 		// Request the address book
@@ -46,16 +53,18 @@ public class AddressBookServiceTest {
 
 		//////////////////////////////////////////////////////////////////////
 		// Verify that GET /contacts is well implemented by the service, i.e
-		// test that it is safe and idempotent
+		// complete the test to ensure that it is safe and idempotent
 		//////////////////////////////////////////////////////////////////////
 
-		// Safe and idempotent: Same petition, same response, do not change the state
+		// Idempotent, repeat the same petition and get the same response
         response = client.target("http://localhost:8282/contacts")
                 .request().get();
         assertEquals(200, response.getStatus());
         assertEquals(0, response.readEntity(AddressBook.class).getPersonList()
                 .size());
 
+        // Safe, addressBook shouldn't be modified (in the server side)
+        assertEquals(0, ab.getPersonList().size());
 	}
 
 	@Test
@@ -95,20 +104,25 @@ public class AddressBookServiceTest {
 
 		//////////////////////////////////////////////////////////////////////
 		// Verify that POST /contacts is well implemented by the service, i.e
-		// test that it is not safe and not idempotent
-		//////////////////////////////////////////////////////////////////////	
+		// complete the test to ensure that it is not safe and not idempotent
+		//////////////////////////////////////////////////////////////////////
 
-        // Adding the same user should get a different response
+		// Not safe: The server state changes
+        assertEquals(1, ab.getPersonList().size());
+
+        // Not idempotent: Different result for the client
+        // If we repeat the operation, the result is different
         response = client.target("http://localhost:8282/contacts")
                 .request(MediaType.APPLICATION_JSON)
                 .post(Entity.entity(juan, MediaType.APPLICATION_JSON));
 
         assertEquals(201, response.getStatus());
-        assertNotEquals(juanURI, response.getLocation()); // Same petition, different URI
+        assertNotEquals(juanURI, response.getLocation());
         assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
         assertEquals(juan.getName(), juanUpdated.getName());
         assertEquals(1, juanUpdated.getId());
         assertEquals(juanURI, juanUpdated.getHref());
+
 
 	}
 
@@ -162,10 +176,23 @@ public class AddressBookServiceTest {
 
 		//////////////////////////////////////////////////////////////////////
 		// Verify that GET /contacts/person/3 is well implemented by the service, i.e
-		// test that it is safe and idempotent
-		//////////////////////////////////////////////////////////////////////	
-	
-	}
+		// complete the test to ensure that it is safe and idempotent
+		//////////////////////////////////////////////////////////////////////
+
+        // Safe: State don't change.
+        assertEquals(3, ab.getPersonList().size());
+
+        // Idempotent: Same petition, same response
+        response = client.target("http://localhost:8282/contacts/person/3")
+                .request(MediaType.APPLICATION_JSON).get();
+        assertEquals(200, response.getStatus());
+        assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+        mariaUpdated = response.readEntity(Person.class);
+        assertEquals(maria.getName(), mariaUpdated.getName());
+        assertEquals(3, mariaUpdated.getId());
+        assertEquals(mariaURI, mariaUpdated.getHref());
+
+    }
 
 	@Test
 	public void listUsers() throws IOException {
@@ -193,11 +220,27 @@ public class AddressBookServiceTest {
 				.get(1).getName());
 
 		//////////////////////////////////////////////////////////////////////
-		// Verify that POST is well implemented by the service, i.e
-		// test that it is not safe and not idempotent
-		//////////////////////////////////////////////////////////////////////	
-	
-	}
+		// Verify that GET /contacts is well implemented by the service, i.e
+		// complete the test to ensure that it is safe and idempotent
+		//////////////////////////////////////////////////////////////////////
+
+        // Safe: State in the server don't changes:
+        assertEquals(2, ab.getPersonList().size());
+        assertEquals(juan.getName(), ab.getPersonList()
+                .get(1).getName());
+        assertEquals(salvador.getName(), ab.getPersonList()
+                .get(0).getName());
+
+        // Idempotent: Same petition, same response
+        response = client.target("http://localhost:8282/contacts")
+                .request(MediaType.APPLICATION_JSON).get();
+        assertEquals(200, response.getStatus());
+        assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+        assertEquals(2, addressBookRetrieved.getPersonList().size());
+        assertEquals(juan.getName(), addressBookRetrieved.getPersonList()
+                .get(1).getName());
+
+    }
 
 	@Test
 	public void updateUsers() throws IOException {
@@ -247,9 +290,24 @@ public class AddressBookServiceTest {
 
 		//////////////////////////////////////////////////////////////////////
 		// Verify that PUT /contacts/person/2 is well implemented by the service, i.e
-		// test that it is idempotent
-		//////////////////////////////////////////////////////////////////////	
-	
+		// complete the test to ensure that it is idempotent but not safe
+		//////////////////////////////////////////////////////////////////////
+
+        // Not safe: The state has changed
+        mariaRetrieved = ab.getPersonList().get(1);
+        assertEquals(maria.getName(), mariaRetrieved.getName());
+        assertEquals(2, mariaRetrieved.getId());
+
+        // Idempotent: Same petition same response
+        response = client.target("http://localhost:8282/contacts/person/2")
+                .request(MediaType.APPLICATION_JSON).get();
+        assertEquals(200, response.getStatus());
+        assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+        mariaRetrieved = response.readEntity(Person.class);
+        assertEquals(maria.getName(), mariaRetrieved.getName());
+        assertEquals(2, mariaRetrieved.getId());
+        assertEquals(juanURI, mariaRetrieved.getHref());
+
 	}
 
 	@Test
@@ -280,8 +338,20 @@ public class AddressBookServiceTest {
 
 		//////////////////////////////////////////////////////////////////////
 		// Verify that DELETE /contacts/person/2 is well implemented by the service, i.e
-		// test that it is idempotent
-		//////////////////////////////////////////////////////////////////////	
+		// complete the test to ensure that it is idempotent but not safe
+		//////////////////////////////////////////////////////////////////////
+
+        // Not Safe: Check in the addressBook that there isn't any user 2
+        // Juan doesn't exists anymore. It affects to the server state.
+        assertEquals(1, ab.getPersonList().size());
+        Person personRetrieved = ab.getPersonList().get(0);
+        assertEquals(salvador.getName(), personRetrieved.getName());
+
+        // Idempotent: Repeat again the petition, if it not change the size of
+        // the people list, it is idempotent. Same result as petition before
+        response = client.target("http://localhost:8282/contacts/person/2")
+                .request().delete();
+        assertEquals(404, response.getStatus());
 
 	}
 
