@@ -63,7 +63,7 @@ public class AddressBookServiceTest {
         assertEquals(0, response.readEntity(AddressBook.class).getPersonList()
                 .size());
 
-        // Safe, addressBook shouldn't be modified (in the server side)
+        // Safe: addressBook shouldn't be modified (in the server side)
         assertEquals(0, ab.getPersonList().size());
 	}
 
